@@ -3681,10 +3681,33 @@
     #    owner: root
     #    group: root
     #    mode: '0700'
-    # https://docs.clamav.net/manual/OnAccess.html
-    # This is disabled for now because of "ERROR: ClamInotif: could not watch path '/home/pyllyukko', Invalid argument"
+
+    - name: Check if FANOTIFY is enabled in kernel
+      shell: "grep FANOTIFY /boot/config-$(uname -r) | grep -E 'CONFIG_FANOTIFY=y|CONFIG_FANOTIFY_ACCESS_PERMISSIONS=y'"
+      register: fanotify_check
+      changed_when: false
+      failed_when: false
+
+    - name: Set fact based on FANOTIFY check
+      set_fact:
+        fanotify_supported: "{{ 'CONFIG_FANOTIFY=y' in fanotify_check.stdout and 'CONFIG_FANOTIFY_ACCESS_PERMISSIONS=y' in fanotify_check.stdout }}"
+
+    - name: Enable & start ClamAV's On-Access service (Debian)
+      when: 
+        - ansible_distribution == "Debian"
+        - fanotify_supported
+      tags:
+        - debian
+        - services
+      ansible.builtin.service:
+        name: clamav-clamonacc
+        state: started
+        enabled: true
+
     - name: Stop & disable ClamAV's On-Access service (Debian)
-      when: ansible_distribution == "Debian" and ansible_architecture != "x86_64"
+      when: 
+        - ansible_distribution == "Debian"
+        - not fanotify_supported
       tags:
         - debian
         - services
